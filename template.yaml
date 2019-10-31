@@ -1,0 +1,146 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+
+Description: >
+  awssam-s3-pyplot
+
+  SAM Template for awssam-s3-pyplot.
+  Main purpose is to provide a Lambda function to plot a graph with
+  some data and save it to an S3 bucket.
+  The functiion will return a successful response once the plot has been saved to S3.
+
+
+  Five Resources are created to form a stack within AWS:
+  * A public S3 bucket for hosting a static website, with an images
+  folder for storing generated plots.
+  * A Lambda function responsible for building plots and saving them to
+  the above S3 bucket.
+    The Lambda function is supported by two python layers, split to
+    reduce individual layer size.
+      * numpy
+      * matplotlib, netcdf4, requests library
+  * An API gateway to allow endpoint access to the Lambda function.
+
+
+# More info about Globals: https://github.com/awslabs/serverless-application-model/blob/master/docs/globals.rst
+Globals:
+  Function:
+    Timeout: 3
+
+Parameters:
+  # ImageBucketName must be unique accross all of AWS, or at least region, unsure which
+  ImageBucketName:
+    Type: String
+    Default: public-plots
+  # Directory to store plots in, within the PlotBucket
+  ImageBucketDirectory:
+    Type: String
+    Default: images
+
+Resources:
+  # This creates a bucket hosted at an endpoint defined by:
+  # http://<bucket-name>.s3-website-<default-region>.amazonaws.com
+  #
+  # Defined with reference to:
+  # https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-properties-s3-bucket.html
+  # 
+  # CorsRules are usually worth taking note of:
+  # https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-properties-s3-bucket-cors-corsrule.html
+  PlotBucket:
+    Type: AWS::S3::Bucket
+    Properties: 
+      AccessControl: PublicRead
+      BucketName: !Ref ImageBucketName
+      #CorsConfiguration: 
+      #  CorsRules:
+      #    -
+      #      AllowedOrigins:
+      #        - http://<outside-domain>
+      #      AllowedMethods:
+      #        - GET
+      #      AllowedHeaders:
+      #        - "*"
+      Tags: 
+        -
+          Key: access
+          Value: public
+        -
+          Key: application
+          Value: plots
+      WebsiteConfiguration: 
+        IndexDocument: index.html
+
+  # This creates a Lambda function using the app.py in the python_plotter directory
+  # app.py contains a lambda api event handler.
+  #
+  # The event handler is triggered by GET request <function endpoint>/generate_plot
+  #
+  # Configured with reference to:
+  # https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-resource-lambda-function.html
+  PythonPlotterFunction:
+    Type: AWS::Serverless::Function # More info about Function Resource: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#awsserverlessfunction
+    Properties:
+      CodeUri: python_plotter/
+      Handler: app.lambda_handler
+      Layers:
+        - !Ref NumPyLayer
+        - !Ref NetcdfRequestsPyplotLayer
+      Runtime: python3.7
+      MemorySize: 512
+      Environment:
+        Variables:
+          IMAGES_BUCKET: !Ref ImageBucketName
+          IMAGES_DIRECTORY: !Ref ImageBucketDirectory
+      Events:
+        # Specifying this API event handler results in an API Gateway being created
+        # Automatically as part of this stack.
+        PythonPlotter:
+          Type: Api # More info about API Event Source: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#api
+          Properties:
+            Path: /generate_plot
+            Method: get
+      Policies:
+        - S3CrudPolicy: # allow this functon write access to the public images bucket
+            BucketName: !Ref ImageBucketName
+
+  # Each layer seperated - maximum allowed single zipped layer size: 50MB
+  # Maximum total layer size per Lambda function: 200MB
+
+  # The numpy layer contains only numpy - resulting in ~25MB zip
+  NumPyLayer:
+    Type: AWS::Serverless::LayerVersion
+    Properties:
+      LayerName: NumPyLayer
+      Description: >-
+        Just numpy
+      ContentUri: ./layers/numpy
+      CompatibleRuntimes:
+        - python3.7
+      RetentionPolicy: Delete
+
+  # This layer contains netcdf4, requests and matplotlib, around 20MB zip
+  NetcdfRequestsPyplotLayer:
+    Type: AWS::Serverless::LayerVersion
+    Properties:
+      LayerName: NetcdfRequestsPyplotLayer
+      Description: >-
+        Includes NetCDF4, requests and matplotlib libraries and dependancies, numpy excluded due to size.
+      ContentUri: ./layers/netcdf-requests-pyplot
+      CompatibleRuntimes:
+        - python3.7
+      RetentionPolicy: Delete
+
+
+Outputs:
+  # ServerlessRestApi is an implicit API created out of Events key under Serverless::Function
+  # Find out more about other implicit resources you can reference within SAM
+  # https://github.com/awslabs/serverless-application-model/blob/master/docs/internals/generated_resources.rst#api
+  PlotterApi:
+    Description: "API Gateway endpoint URL for Prod stage for Python Plotter function"
+    Value: !Sub "https://${ServerlessRestApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/hello/"
+  PythonPlotterFunction:
+    Description: "Python Plotter Lambda Function ARN"
+    Value: !GetAtt PythonPlotterFunction.Arn
+  PythonPlotterFunctionIamRole:
+    Description: "Implicit IAM Role created for Python Plotter function"
+    Value: !GetAtt PythonPlotterFunctionRole.Arn
