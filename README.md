@@ -19,6 +19,11 @@ The AWS Toolkit is an open source plug-in for popular IDEs that uses the SAM CLI
 * [VS Code](https://docs.aws.amazon.com/toolkit-for-vscode/latest/userguide/welcome.html)
 * [Visual Studio](https://docs.aws.amazon.com/toolkit-for-visual-studio/latest/user-guide/welcome.html)
 
+
+Before getting too invested in AWS SAM, take a look at what the Serverless Framework can do.
+
+https://sanderknape.com/2018/02/comparing-aws-sam-with-serverless-framework/
+
 ## Deploy the sample application
 
 The Serverless Application Model Command Line Interface (SAM CLI) is an extension of the AWS CLI that adds functionality for building and testing Lambda applications. It uses Docker to run your functions in an Amazon Linux environment that matches Lambda. It can also emulate your application's build environment and API.
@@ -37,6 +42,7 @@ The SAM CLI uses an Amazon S3 bucket to store your application's deployment arti
 aws s3 mb s3://BUCKET_NAME
 ```
 
+### Configure the CloudFormation
 First update the ImageBucketName in template.yaml to a unique, AWS wide name.
 
 Take a look through the template to understand the resources it will deploy.
@@ -57,6 +63,8 @@ Firstly, we must build the Lambda layers, as sam does not support this yet, and 
 
 This process is built on the premise of this single layer creation technique.
 https://github.com/ayoung012/awslambda-matplotlib-layer
+
+### Packaging and Deployment
 
 
 Then to prepare the application for deployment, use the `sam package` command.
